@@ -22,6 +22,7 @@ public class ButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHand
     private Selectable selectable;
     private Coroutine fadeRoutine;
     private float currentLevel;
+    private bool isLocked; // Stays lit (e.g. selected game mode)
 
     // Hover values (from the preset) and off values (glow invisible)
     private Color glowOn, glowOff, underlayOn, underlayOff;
@@ -44,6 +45,12 @@ public class ButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHand
         dilateOff = GetFloat(normalMaterial, ShaderUtilities.ID_FaceDilate);
     }
 
+    // Locked buttons are lit again when their screen is shown
+    private void OnEnable()
+    {
+        if (isLocked) SetLevel(1f);
+    }
+
     // Reset instantly when the page is hidden, so no button stays lit
     private void OnDisable()
     {
@@ -56,6 +63,13 @@ public class ButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHand
         if (fadeMaterial != null) Destroy(fadeMaterial);
     }
 
+    // Keeps the glow on until unlocked, ignoring pointer exit and deselect
+    public void SetLocked(bool locked)
+    {
+        isLocked = locked;
+        SetHover(locked);
+    }
+
     public void OnPointerEnter(PointerEventData eventData) => SetHover(true);
     public void OnPointerExit(PointerEventData eventData) => SetHover(false);
     public void OnSelect(BaseEventData eventData) => SetHover(true);     // Keyboard/gamepad navigation
@@ -64,6 +78,7 @@ public class ButtonHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHand
     private void SetHover(bool isHovered)
     {
         if (fadeMaterial == null || !isActiveAndEnabled) return;
+        if (!isHovered && isLocked) return;
         if (isHovered && selectable != null && !selectable.interactable) return;
 
         if (fadeRoutine != null) StopCoroutine(fadeRoutine);

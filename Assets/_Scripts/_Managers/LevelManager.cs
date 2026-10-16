@@ -22,6 +22,8 @@ public class LevelManager : MonoBehaviour
     [Header("Prefabs")]
     [SerializeField] private List<GameObject> backgroundsPrefabs;
 
+    public int CurrentLevel => currentLevel;
+
     public float GetWindOffset()
     {
         return Mathf.Sin(Time.time * windFrequency) * windStrength;

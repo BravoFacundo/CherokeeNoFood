@@ -11,6 +11,8 @@ public class GameManager : MonoBehaviour
     [Header("Configuration")]
     public GameState state;
     [SerializeField] private GameMode gameMode;
+    [Tooltip("Scenes where the selected game mode starts (Game, and Development for testing)")]
+    [SerializeField] private List<string> gameSceneNames = new() { "Game", "Development" };
 
     [Header("List")]
     public List<GameObject> currentEnemies;
@@ -34,6 +36,7 @@ public class GameManager : MonoBehaviour
     // Scene managers call these from Start, so the persistent instance never holds stale references
     public void RegisterEnemySpawnHandler(EnemySpawnHandler handler) => enemySpawnHandler = handler;
     public void SetGameMode(int mode) => gameMode = (GameMode)mode;
+    public int CurrentGameMode => (int)gameMode;
 
     void OnEnable()
     {
@@ -48,7 +51,7 @@ public class GameManager : MonoBehaviour
     {
         if (instance != this) return; // Duplicate is being destroyed, ignore the event
         Time.timeScale = 1f; // Reset pause/lose state on every scene load
-        if (scene.name == "Development")
+        if (gameSceneNames.Contains(scene.name))
         {
             if (gameMode == GameMode.StoryMode) StartCoroutine(Tutorial_Part1());
             else if (gameMode == GameMode.EndlessMode) StartCoroutine(EndlessModeStart());
@@ -64,7 +67,6 @@ public class GameManager : MonoBehaviour
 
     private void Update()
     {
-        Debug_Inputs();
     }
 
     public void UpdateGameState(GameState newState)
@@ -148,10 +150,6 @@ public class GameManager : MonoBehaviour
 
     //-------------------------------------------------------------------------------------------------------------------
 
-    private void Debug_Inputs()
-    {        
-        if (Input.GetKeyDown(KeyCode.P)) SetGameState("Pause", true);
-    }
 
 }
 

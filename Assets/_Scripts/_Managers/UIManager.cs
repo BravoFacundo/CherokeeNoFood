@@ -42,6 +42,8 @@ public class UIManager : MonoBehaviour
     [Header("Screens")]
     [FormerlySerializedAs("firstPage"), FormerlySerializedAs("firstMenuPage")]
     [SerializeField] private GameObject firstScreen;
+    [Tooltip("Screen shown in overlay mode (pause)")]
+    [SerializeField] private GameObject overlayScreen;
     [FormerlySerializedAs("pages")]
     [SerializeField] private List<ScreenData> screens = new();
 
@@ -59,6 +61,7 @@ public class UIManager : MonoBehaviour
 
     [Header("Scenes")]
     [SerializeField] private string gameSceneName = "Development";
+    [SerializeField] private string menuSceneName = "Menu";
 
     [Header("Gradient")]
     [SerializeField] private Image gradientImage;
@@ -72,15 +75,29 @@ public class UIManager : MonoBehaviour
     private Image gradientFadeImage;
     private Coroutine gradientRoutine;
     private GradientType currentGradient = GradientType.None;
+    private GradientType? gradientOverride; // Fixed gradient while shown as overlay (pause = stage gradient)
+
+    // Outside the Menu scene the canvas works as the pause overlay: hidden at start, Escape handled by PauseController
+    private bool startHidden;
+    public event System.Action ResumeRequested;
+
+    public bool IsOpen => currentScreen != null;
+    public bool CanGoBack => screenHistory.Count > 0;
 
     //---------- LIFECYCLE ------------------------------------------------------------------------------------------------------------//
 
     private void Awake()
     {
+        // Only one screens canvas: the one from the scene that just loaded wins (removes any leftover from the previous scene)
+        if (instance != null && instance != this) Destroy(instance.gameObject);
         instance = this;
+        startHidden = SceneManager.GetActiveScene().name != menuSceneName;
 
-        // The fader can stay disabled in the editor to work on the screens comfortably
+        // Objects can stay disabled in the editor; they are turned on here and stay invisible until used
         if (screenFader != null) screenFader.gameObject.SetActive(true);
+        gradientImage.gameObject.SetActive(true); // Screens_Background (alpha 0 below)
+        foreach (ScreenData entry in screens)
+            if (entry.screen.transform.parent != null) entry.screen.transform.parent.gameObject.SetActive(true); // Screens parent
 
         // Second image used to crossfade between gradients
         gradientFadeImage = Instantiate(gradientImage, gradientImage.transform.parent);
@@ -93,12 +110,14 @@ public class UIManager : MonoBehaviour
     private void Start()
     {
         foreach (ScreenData entry in screens) entry.screen.SetActive(false);
-        ShowScreen(firstScreen, true); // No fade on the first screen
+        if (startHidden) HideAll();
+        else ShowScreen(firstScreen, true); // No fade on the first screen
         if (screenFader != null) screenFader.FadeIn();
     }
 
     private void Update()
     {
+        if (startHidden) return; // The owner handles Escape
         if (screenFader != null && screenFader.IsFading) return;
         if (Input.GetKeyDown(KeyCode.Escape)) Back();
     }
@@ -122,10 +141,39 @@ public class UIManager : MonoBehaviour
         ShowScreen(screenHistory.Pop());
     }
 
-    // 0 = StoryMode, 1 = EndlessMode (same order as GameManager.GameMode)
-    public void SelectGameMode(int mode) => GameManager.instance.SetGameMode(mode);
+    // Overlay: show the overlay screen (pause) with a fixed gradient
+    public void ShowOverlay(GradientType gradient) => Show(overlayScreen, gradient);
+
+    // Overlay: open a screen with a fixed gradient (e.g. pause with the stage gradient)
+    public void Show(GameObject screen, GradientType gradient)
+    {
+        gradientOverride = gradient;
+        screenHistory.Clear();
+        if (currentScreen != null) currentScreen.SetActive(false);
+        ShowScreen(screen);
+    }
+
+    // Overlay: close everything
+    public void Hide()
+    {
+        if (currentScreen != null) currentScreen.SetActive(false);
+        HideAll();
+    }
+
+    private void HideAll()
+    {
+        currentScreen = null;
+        gradientOverride = null;
+        screenHistory.Clear();
+        if (screensInfo != null) screensInfo.SetActive(false);
+        SetGradientImmediate(GradientType.None);
+    }
+
+    // Button event (Continue playing): PauseController listens and resumes the game
+    public void ResumeGame() => ResumeRequested?.Invoke();
 
     public void StartGame() => LeaveAfterFade(() => SceneManager.LoadScene(gameSceneName));
+    public void GoToMenu() => LeaveAfterFade(() => SceneManager.LoadScene(menuSceneName));
     public void ExitGame() => LeaveAfterFade(QuitApplication);
 
     private void LeaveAfterFade(System.Action leave)
@@ -148,7 +196,7 @@ public class UIManager : MonoBehaviour
         currentScreen = screen;
 
         ScreenData entry = screens.FirstOrDefault(s => s.screen == screen);
-        GradientType gradient = entry != null ? entry.gradient : GradientType.None;
+        GradientType gradient = gradientOverride ?? (entry != null ? entry.gradient : GradientType.None);
         if (instant) SetGradientImmediate(gradient);
         else FadeGradient(gradient);
         UpdateScreensInfo(entry);

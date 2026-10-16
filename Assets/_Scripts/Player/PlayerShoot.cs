@@ -53,6 +53,7 @@ public class PlayerShoot : MonoBehaviour
 
     void Update()
     {
+        if (Time.timeScale == 0f) return; // Paused: clicks belong to the UI
         Mouse_Inputs();
         RotateBowByMouseXPosition();
     }
