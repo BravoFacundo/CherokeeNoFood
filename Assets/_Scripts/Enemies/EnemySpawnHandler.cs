@@ -15,7 +15,6 @@ public class EnemySpawnHandler : MonoBehaviour
     private Vector3 windowSpawnPosition;
 
     [Header("References")]
-    [SerializeField] GameManager gameManager;
     [SerializeField] ParticleManager particleController;
     private Transform player;
 
@@ -24,6 +23,7 @@ public class EnemySpawnHandler : MonoBehaviour
 
     private IEnumerator Start()
     {
+        GameManager.instance.RegisterEnemySpawnHandler(this);
         player = Camera.main.transform;
         doorSpawnPosition = doorSpawnPoint.position;
         windowSpawnPosition = windowSpawnPoint.position;
@@ -60,7 +60,7 @@ public class EnemySpawnHandler : MonoBehaviour
         newEnemyScript.particleManager = particleController;        
         newEnemy.GetComponent<LookAtCamera>().target = player;
 
-        gameManager.AddNewEnemy(newEnemy, enemyToSpawn);
+        GameManager.instance.AddNewEnemy(newEnemy, enemyToSpawn);
     }
 
 }

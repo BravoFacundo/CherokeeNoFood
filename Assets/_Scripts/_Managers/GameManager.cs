@@ -15,19 +15,25 @@ public class GameManager : MonoBehaviour
     [Header("List")]
     public List<GameObject> currentEnemies;
 
-    [Header("References")]
-    [SerializeField] private UIManager uiManager;
-    [SerializeField] private EnemySpawnHandler enemySpawHandler;
+    [Header("Scene References (registered at runtime)")]
+    [SerializeField] private EnemySpawnHandler enemySpawnHandler;
 
     void Awake()
     {
-        if (instance == null)
+        // Only this object persists between scenes. Scene managers stay in their scene.
+        if (instance != null && instance != this)
         {
-            instance = this;
-            DontDestroyOnLoad(transform.parent);
+            Destroy(gameObject);
+            return;
         }
-        else Destroy(transform.parent.gameObject);
+        instance = this;
+        transform.SetParent(null); // DontDestroyOnLoad only works on root objects
+        DontDestroyOnLoad(gameObject);
     }
+
+    // Scene managers call these from Start, so the persistent instance never holds stale references
+    public void RegisterEnemySpawnHandler(EnemySpawnHandler handler) => enemySpawnHandler = handler;
+    public void SetGameMode(int mode) => gameMode = (GameMode)mode;
 
     void OnEnable()
     {
@@ -39,7 +45,9 @@ public class GameManager : MonoBehaviour
     }
 
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {        
+    {
+        if (instance != this) return; // Duplicate is being destroyed, ignore the event
+        Time.timeScale = 1f; // Reset pause/lose state on every scene load
         if (scene.name == "Development")
         {
             if (gameMode == GameMode.StoryMode) StartCoroutine(Tutorial_Part1());

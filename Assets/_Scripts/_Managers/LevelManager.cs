@@ -33,7 +33,7 @@ public class LevelManager : MonoBehaviour
         
         directionalLight.transform.eulerAngles = lightRotations[currentLevel];
         directionalLight.color = lightColors[currentLevel];
-        
+
         //ChangeLevelBackground(3);
     }
 

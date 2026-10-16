@@ -11,7 +11,6 @@ public class PlayerController : MonoBehaviour
     private bool checkFirst = false;
     
     [Header("References")]
-    [SerializeField] private GameManager gameManager;
     [SerializeField] private Animator healthAnimator;
     [SerializeField] private Animator bowAnimator;
     [SerializeField] private Animator enemyAttackAnimator;
@@ -59,8 +58,8 @@ public class PlayerController : MonoBehaviour
         currentAttackingEnemy = enemyObj;
         if (beingAttacked && !checkFirst)
         {
-            gameManager.SetGameState("pause", true);
-            gameManager.SetGameState("Loose", true);
+            GameManager.instance.SetGameState("pause", true);
+            GameManager.instance.SetGameState("Loose", true);
             checkFirst = true;
         }
         else

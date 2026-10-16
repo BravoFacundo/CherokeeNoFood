@@ -3,115 +3,187 @@ using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using UnityEngine.Serialization;
 
+// Menu navigation: pages with back history, and a background gradient per page.
 public class UIManager : MonoBehaviour
 {
+    public static UIManager instance;
 
-    [Header("Config")]
-    [SerializeField] private List<GameObject> bars = new();
-    [SerializeField] private List<GameObject> coins = new();
-    [SerializeField] private GameObject enemyBar;
-    private Animator enemiesBarAnimator;
+    // None = no gradient, the scene behind is visible. Add new gradients at the end
+    public enum GradientType { None, Day, Sunset, Night, Neon, Comic, Black }
 
-    [Header("References")]
-    [SerializeField] private Transform enemyBarParent;
-    [SerializeField] private Transform popupsParent;
-    [SerializeField] private List<RectTransform> coinTransforms = new List<RectTransform>();
-    //private float enemiesBarYpos;
-    //private float enemiesBarWidth;
-
-    [Header("Prefabs")]
-    [SerializeField] private GameObject popupNewLevelPrefab;
-    [SerializeField] private GameObject enemyBarPrefab;
-    [SerializeField] private GameObject enemyCoinPrefab;
-
-
-    [Header("Lists")]
-    [SerializeField] private List<GameObject> enemiesList;
-    [SerializeField] private List<GameObject> bossList;
-    [SerializeField] private int totalSpawnedEnemies;
-    // totalSpawnedEnemies = enemiesList.Count + bossList.Count
-    [SerializeField] private int totalBars; //Cada 5 enemigos de enemiesList suma 1, cada 1 de bossList suma 1
-    [SerializeField] private int totalEnemies;
-    [SerializeField] private int totalBosses;
-    // if totalBosses == totalBars || totalBosses == 0 || totalBars == 1 { No Order Rule }
-
-    // if totalBars == 2 && totalBosses == 1 { Boss on 1st place }
-
-    // if totalBars == 3 && totalBosses == 1 { Boss on 2nd place }
-    // if totalBars == 3 && totalBosses == 2 { Boss on 1st and 3rd place }
-
-    // if totalBars == 4 && totalBosses == 1 { Not Posible }
-    // if totalBars == 4 && totalBosses == 2 { Boss on 2nd and 3rd place }
-    // if totalBars == 4 && totalBosses == 3 { Not Recommended, but Boss on 1st, 3rd and 4th place }
-
-    private IEnumerator Start()
+    [System.Serializable]
+    public class Page
     {
-        yield return new WaitForSeconds(1.5f);
-        //GameObject newPopup = Instantiate(popupNewLevelPrefab, popupsParent.transform);
-        //newPopup.GetComponent<PopupNewLevel>().text = "Final Level";
+        public GameObject page;
+        [FormerlySerializedAs("menuGradient")]
+        public GradientType gradient;
     }
 
-    public void InstantiateBars(int enemyCount)
+    [System.Serializable]
+    public class GradientEntry
     {
-        float enemiesBarYpos = enemyBarPrefab.GetComponent<RectTransform>().anchoredPosition.y;
-        float enemiesBarWidth = enemyBarPrefab.GetComponent<RectTransform>().rect.width - 12;
+        public GradientType type;
+        [Tooltip("Empty = solid color (e.g. Black)")]
+        public Sprite sprite;
+        public Color color = Color.white;
+    }
 
-        //List<RectTransform> coinTransforms = enemiesBarPrefab.GetComponentsInChildren<RectTransform>().ToList();
-        coinTransforms = enemyBarPrefab.GetComponentsInChildren<RectTransform>().ToList();
-        coinTransforms.RemoveAt(0);
+    [Header("Pages")]
+    [FormerlySerializedAs("firstMenuPage")]
+    [SerializeField] private GameObject firstPage;
+    [SerializeField] private List<Page> pages = new();
 
-        int barsNeeded = CalculateEnemyBars(enemyCount);
-        float barPosX = CalculateBarStartPosX(barsNeeded, enemiesBarWidth);
+    [Header("Scenes")]
+    [SerializeField] private string gameSceneName = "Development";
 
-        Utilities.DestroyChildElements(enemyBarParent.gameObject);
-        for (int i = 0; i < barsNeeded; i++)
+    [Header("Gradient")]
+    [SerializeField] private Image gradientImage;
+    [SerializeField] private float gradientFadeDuration = 0.5f;
+    [Tooltip("Each gradient, assigned once")]
+    [SerializeField] private List<GradientEntry> gradients = new();
+
+    [Header("Debug")]
+    [SerializeField] private GameObject currentPage;
+    private readonly Stack<GameObject> pageHistory = new();
+    private Image gradientFadeImage;
+    private Coroutine gradientRoutine;
+    private GradientType currentGradient = GradientType.None;
+
+    //---------- LIFECYCLE ------------------------------------------------------------------------------------------------------------//
+
+    private void Awake()
+    {
+        instance = this;
+
+        // Second image used to crossfade between gradients
+        gradientFadeImage = Instantiate(gradientImage, gradientImage.transform.parent);
+        gradientFadeImage.name = "Gradient_Fade";
+        gradientFadeImage.transform.SetSiblingIndex(gradientImage.transform.GetSiblingIndex() + 1);
+        SetImageAlpha(gradientFadeImage, 0f);
+        SetImageAlpha(gradientImage, 0f);
+    }
+
+    private void Start()
+    {
+        foreach (Page entry in pages) entry.page.SetActive(false);
+        ShowPage(firstPage);
+    }
+
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape)) Back();
+    }
+
+    //---------- NAVIGATION (button events) -------------------------------------------------------------------------------------------//
+
+    public void OpenPage(GameObject page)
+    {
+        if (currentPage != null)
         {
-            GameObject newBar = Instantiate(enemyBarPrefab, enemyBarParent);
+            pageHistory.Push(currentPage);
+            currentPage.SetActive(false);
+        }
+        ShowPage(page);
+    }
 
-            RectTransform newBarRT = newBar.GetComponent<RectTransform>();
-            newBarRT.anchoredPosition = new Vector2(barPosX, enemiesBarYpos);
-            barPosX += Mathf.Abs(enemiesBarWidth / 2) * 2;
+    public void Back()
+    {
+        if (pageHistory.Count == 0) return;
+        currentPage.SetActive(false);
+        ShowPage(pageHistory.Pop());
+    }
 
-            for (int j = 0; j < 5; j++)
+    // 0 = StoryMode, 1 = EndlessMode (same order as GameManager.GameMode)
+    public void SelectGameMode(int mode) => GameManager.instance.SetGameMode(mode);
+
+    public void StartGame() => SceneManager.LoadScene(gameSceneName);
+
+    public void ExitGame()
+    {
+        Application.Quit();
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#endif
+    }
+
+    private void ShowPage(GameObject page)
+    {
+        page.SetActive(true);
+        currentPage = page;
+
+        Page entry = pages.FirstOrDefault(p => p.page == page);
+        FadeGradient(entry != null ? entry.gradient : GradientType.None);
+    }
+
+    //---------- GRADIENT -------------------------------------------------------------------------------------------------------------//
+
+    private void FadeGradient(GradientType type)
+    {
+        if (type == currentGradient) return;
+
+        GradientEntry entry = null;
+        if (type != GradientType.None)
+        {
+            entry = gradients.FirstOrDefault(g => g.type == type);
+            if (entry == null)
             {
-                Destroy(newBar.transform.GetChild(j).gameObject);
-                GameObject newCoin = Instantiate(enemyCoinPrefab, newBar.transform);
-                RectTransform newCoinRT = newCoin.GetComponent<RectTransform>();
-                newCoinRT.anchoredPosition = coinTransforms[j].anchoredPosition;
+                Debug.LogWarning($"Gradient {type} is not in the gradients list.");
+                return;
             }
         }
+
+        currentGradient = type;
+        if (gradientRoutine != null) StopCoroutine(gradientRoutine);
+        gradientRoutine = StartCoroutine(entry != null ? FadeInGradient(entry) : FadeOutGradient());
     }
 
-
-    private int CalculateEnemyBars(int enemyCount)
+    // Crossfade: the fade image appears over the current gradient, then replaces it
+    private IEnumerator FadeInGradient(GradientEntry entry)
     {
-        if (enemyCount <= 0) return 0;
-        else
-        {
-            int barsNeeded = enemyCount / 5;
-            if (enemyCount % 5 != 0) barsNeeded++;
-            return barsNeeded;
-        }
-    }
-    private float CalculateBarStartPosX(float barsNeeded, float enemiesBarWidth)
-    {
-        if (barsNeeded == 0) return 0;
-        else
-        {
-            float barPosX = (enemiesBarWidth / 2) * (barsNeeded - 1);
+        ApplyGradient(gradientFadeImage, entry);
+        yield return FadeAlpha(gradientFadeImage, 0f, 1f);
 
-            return barPosX * -1;
-        }
-    }
-    private void EraseCanvasElementsChilds(GameObject parentObject)
-    {
-        foreach (Transform child in parentObject.transform)
-        {
-            Destroy(child.gameObject);
-        }
+        ApplyGradient(gradientImage, entry);
+        SetImageAlpha(gradientImage, 1f);
+        SetImageAlpha(gradientFadeImage, 0f);
+        gradientRoutine = null;
     }
 
+    // None: the current gradient disappears and the scene behind is visible
+    private IEnumerator FadeOutGradient()
+    {
+        SetImageAlpha(gradientFadeImage, 0f);
+        yield return FadeAlpha(gradientImage, gradientImage.color.a, 0f);
+        gradientRoutine = null;
+    }
+
+    private void ApplyGradient(Image image, GradientEntry entry)
+    {
+        image.sprite = entry.sprite;
+        Color color = entry.color;
+        color.a = image.color.a; // Keep current alpha, fades control it
+        image.color = color;
+    }
+
+    private IEnumerator FadeAlpha(Image image, float from, float to)
+    {
+        float elapsedTime = 0f;
+        while (elapsedTime < gradientFadeDuration)
+        {
+            elapsedTime += Time.unscaledDeltaTime;
+            SetImageAlpha(image, Mathf.Lerp(from, to, elapsedTime / gradientFadeDuration));
+            yield return null;
+        }
+        SetImageAlpha(image, to);
+    }
+
+    private void SetImageAlpha(Image image, float alpha)
+    {
+        Color color = image.color;
+        color.a = alpha;
+        image.color = color;
+    }
 }
-
-
