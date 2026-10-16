@@ -5,8 +5,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
+using TMPro;
 
-// Menu navigation: pages with back history, and a background gradient per page.
+// Menu navigation: screens with back history, a background gradient per screen and shared screen info (title, back).
 public class UIManager : MonoBehaviour
 {
     public static UIManager instance;
@@ -15,11 +16,18 @@ public class UIManager : MonoBehaviour
     public enum GradientType { None, Day, Sunset, Night, Neon, Comic, Black }
 
     [System.Serializable]
-    public class Page
+    public class ScreenData
     {
-        public GameObject page;
+        [FormerlySerializedAs("page")]
+        public GameObject screen;
         [FormerlySerializedAs("menuGradient")]
         public GradientType gradient;
+        [Tooltip("Shows the shared screen info (dividers, title, back button)")]
+        [FormerlySerializedAs("showFrame")]
+        public bool showInfo = true;
+        public string title;
+        [Tooltip("Fork fade variant that fits the title length. Empty = keep current.")]
+        public Sprite titleFork;
     }
 
     [System.Serializable]
@@ -31,10 +39,19 @@ public class UIManager : MonoBehaviour
         public Color color = Color.white;
     }
 
-    [Header("Pages")]
-    [FormerlySerializedAs("firstMenuPage")]
-    [SerializeField] private GameObject firstPage;
-    [SerializeField] private List<Page> pages = new();
+    [Header("Screens")]
+    [FormerlySerializedAs("firstPage"), FormerlySerializedAs("firstMenuPage")]
+    [SerializeField] private GameObject firstScreen;
+    [FormerlySerializedAs("pages")]
+    [SerializeField] private List<ScreenData> screens = new();
+
+    [Header("Screens Info (shared by all screens)")]
+    [FormerlySerializedAs("pageFrame")]
+    [SerializeField] private GameObject screensInfo;
+    [FormerlySerializedAs("pageTitle")]
+    [SerializeField] private TMP_Text screenTitle;
+    [Tooltip("Fork fade image inside Divider_Top")]
+    [SerializeField] private Image titleForkImage;
 
     [Header("Scenes")]
     [SerializeField] private string gameSceneName = "Development";
@@ -46,8 +63,8 @@ public class UIManager : MonoBehaviour
     [SerializeField] private List<GradientEntry> gradients = new();
 
     [Header("Debug")]
-    [SerializeField] private GameObject currentPage;
-    private readonly Stack<GameObject> pageHistory = new();
+    [SerializeField] private GameObject currentScreen;
+    private readonly Stack<GameObject> screenHistory = new();
     private Image gradientFadeImage;
     private Coroutine gradientRoutine;
     private GradientType currentGradient = GradientType.None;
@@ -68,8 +85,8 @@ public class UIManager : MonoBehaviour
 
     private void Start()
     {
-        foreach (Page entry in pages) entry.page.SetActive(false);
-        ShowPage(firstPage);
+        foreach (ScreenData entry in screens) entry.screen.SetActive(false);
+        ShowScreen(firstScreen);
     }
 
     private void Update()
@@ -79,21 +96,21 @@ public class UIManager : MonoBehaviour
 
     //---------- NAVIGATION (button events) -------------------------------------------------------------------------------------------//
 
-    public void OpenPage(GameObject page)
+    public void OpenScreen(GameObject screen)
     {
-        if (currentPage != null)
+        if (currentScreen != null)
         {
-            pageHistory.Push(currentPage);
-            currentPage.SetActive(false);
+            screenHistory.Push(currentScreen);
+            currentScreen.SetActive(false);
         }
-        ShowPage(page);
+        ShowScreen(screen);
     }
 
     public void Back()
     {
-        if (pageHistory.Count == 0) return;
-        currentPage.SetActive(false);
-        ShowPage(pageHistory.Pop());
+        if (screenHistory.Count == 0) return;
+        currentScreen.SetActive(false);
+        ShowScreen(screenHistory.Pop());
     }
 
     // 0 = StoryMode, 1 = EndlessMode (same order as GameManager.GameMode)
@@ -109,13 +126,24 @@ public class UIManager : MonoBehaviour
 #endif
     }
 
-    private void ShowPage(GameObject page)
+    private void ShowScreen(GameObject screen)
     {
-        page.SetActive(true);
-        currentPage = page;
+        screen.SetActive(true);
+        currentScreen = screen;
 
-        Page entry = pages.FirstOrDefault(p => p.page == page);
+        ScreenData entry = screens.FirstOrDefault(s => s.screen == screen);
         FadeGradient(entry != null ? entry.gradient : GradientType.None);
+        UpdateScreensInfo(entry);
+    }
+
+    private void UpdateScreensInfo(ScreenData entry)
+    {
+        if (screensInfo == null) return;
+        bool show = entry != null && entry.showInfo;
+        screensInfo.SetActive(show);
+        if (!show) return;
+        if (screenTitle != null) screenTitle.text = entry.title;
+        if (titleForkImage != null && entry.titleFork != null) titleForkImage.sprite = entry.titleFork;
     }
 
     //---------- GRADIENT -------------------------------------------------------------------------------------------------------------//
