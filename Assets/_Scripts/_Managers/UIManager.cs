@@ -53,6 +53,10 @@ public class UIManager : MonoBehaviour
     [Tooltip("Fork fade image inside Divider_Top")]
     [SerializeField] private Image titleForkImage;
 
+    [Header("Screen Fader")]
+    [Tooltip("Optional (Screens_Fade). Black overlay that fades in on start and out before leaving. Can be disabled in the editor.")]
+    [SerializeField] private ScreenFader screenFader;
+
     [Header("Scenes")]
     [SerializeField] private string gameSceneName = "Development";
 
@@ -75,9 +79,12 @@ public class UIManager : MonoBehaviour
     {
         instance = this;
 
+        // The fader can stay disabled in the editor to work on the screens comfortably
+        if (screenFader != null) screenFader.gameObject.SetActive(true);
+
         // Second image used to crossfade between gradients
         gradientFadeImage = Instantiate(gradientImage, gradientImage.transform.parent);
-        gradientFadeImage.name = "Gradient_Fade";
+        gradientFadeImage.name = gradientImage.name + "_Fade"; // e.g. Screens_Background_Fade
         gradientFadeImage.transform.SetSiblingIndex(gradientImage.transform.GetSiblingIndex() + 1);
         SetImageAlpha(gradientFadeImage, 0f);
         SetImageAlpha(gradientImage, 0f);
@@ -86,11 +93,13 @@ public class UIManager : MonoBehaviour
     private void Start()
     {
         foreach (ScreenData entry in screens) entry.screen.SetActive(false);
-        ShowScreen(firstScreen);
+        ShowScreen(firstScreen, true); // No fade on the first screen
+        if (screenFader != null) screenFader.FadeIn();
     }
 
     private void Update()
     {
+        if (screenFader != null && screenFader.IsFading) return;
         if (Input.GetKeyDown(KeyCode.Escape)) Back();
     }
 
@@ -116,9 +125,16 @@ public class UIManager : MonoBehaviour
     // 0 = StoryMode, 1 = EndlessMode (same order as GameManager.GameMode)
     public void SelectGameMode(int mode) => GameManager.instance.SetGameMode(mode);
 
-    public void StartGame() => SceneManager.LoadScene(gameSceneName);
+    public void StartGame() => LeaveAfterFade(() => SceneManager.LoadScene(gameSceneName));
+    public void ExitGame() => LeaveAfterFade(QuitApplication);
 
-    public void ExitGame()
+    private void LeaveAfterFade(System.Action leave)
+    {
+        if (screenFader != null) screenFader.FadeOut(leave);
+        else leave();
+    }
+
+    private void QuitApplication()
     {
         Application.Quit();
 #if UNITY_EDITOR
@@ -126,14 +142,26 @@ public class UIManager : MonoBehaviour
 #endif
     }
 
-    private void ShowScreen(GameObject screen)
+    private void ShowScreen(GameObject screen, bool instant = false)
     {
         screen.SetActive(true);
         currentScreen = screen;
 
         ScreenData entry = screens.FirstOrDefault(s => s.screen == screen);
-        FadeGradient(entry != null ? entry.gradient : GradientType.None);
+        GradientType gradient = entry != null ? entry.gradient : GradientType.None;
+        if (instant) SetGradientImmediate(gradient);
+        else FadeGradient(gradient);
         UpdateScreensInfo(entry);
+
+        RebuildLayout(screen);
+        if (screensInfo != null && screensInfo.activeSelf) RebuildLayout(screensInfo);
+    }
+
+    // Layout groups normally update at the end of the frame; force it so the screen never shows misplaced for a frame
+    private void RebuildLayout(GameObject target)
+    {
+        Canvas.ForceUpdateCanvases(); // Lets TMP texts report their size first
+        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)target.transform);
     }
 
     private void UpdateScreensInfo(ScreenData entry)
@@ -166,6 +194,23 @@ public class UIManager : MonoBehaviour
         currentGradient = type;
         if (gradientRoutine != null) StopCoroutine(gradientRoutine);
         gradientRoutine = StartCoroutine(entry != null ? FadeInGradient(entry) : FadeOutGradient());
+    }
+
+    private void SetGradientImmediate(GradientType type)
+    {
+        if (gradientRoutine != null) StopCoroutine(gradientRoutine);
+        gradientRoutine = null;
+        currentGradient = type;
+        SetImageAlpha(gradientFadeImage, 0f);
+
+        GradientEntry entry = gradients.FirstOrDefault(g => g.type == type);
+        if (type == GradientType.None || entry == null)
+        {
+            SetImageAlpha(gradientImage, 0f);
+            return;
+        }
+        ApplyGradient(gradientImage, entry);
+        SetImageAlpha(gradientImage, 1f);
     }
 
     // Crossfade: the fade image appears over the current gradient, then replaces it
