@@ -5,6 +5,8 @@ using UnityEngine;
 public class LevelManager : MonoBehaviour
 {
     [Header("Debug")]
+    [Tooltip("F9 cycles to the next stage background (editor and development builds only)")]
+    [SerializeField] private bool debugNextStageKey = true;
     [SerializeField] private int currentLevel = 0;
     [SerializeField] private GameObject currentBackground;
     
@@ -23,6 +25,7 @@ public class LevelManager : MonoBehaviour
     [SerializeField] private List<GameObject> backgroundsPrefabs;
 
     public int CurrentLevel => currentLevel;
+    private bool isTransitioning;
 
     public float GetWindOffset()
     {
@@ -39,8 +42,25 @@ public class LevelManager : MonoBehaviour
         //ChangeLevelBackground(3);
     }
 
+    private void Update()
+    {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (debugNextStageKey && Input.GetKeyDown(KeyCode.F9)) DebugNextStage();
+#endif
+    }
+
+    // Next background, back to the first after the last
+    private void DebugNextStage()
+    {
+        if (isTransitioning) return;
+        int next = (currentLevel + 1) % backgroundsPrefabs.Count;
+        Debug.Log($"[LevelManager] Debug: stage {currentLevel} -> {next}");
+        ChangeLevelBackground(next + 1); // ChangeLevelBackground uses 1 = first stage
+    }
+
     public void ChangeLevelBackground(int level)
     {
+        isTransitioning = true;
         level = Mathf.Clamp(level, 1, backgroundsPrefabs.Count) - 1;
         GameObject newScene = Instantiate(backgroundsPrefabs[level], currentBackground.transform.position, Quaternion.identity, backgroundParent);
 
@@ -92,5 +112,6 @@ public class LevelManager : MonoBehaviour
         Destroy(currentBackground);
         currentBackground = newBackground;
         currentLevel = newLevel;
+        isTransitioning = false;
     }
 }
